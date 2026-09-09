@@ -604,7 +604,7 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;paddin
     <div class="btabs" role="tablist"><button class="bt" role="tab" data-k="steps" aria-selected="true">How</button><button class="bt" role="tab" data-k="cautions" aria-selected="false">Cautions</button><button class="bt" role="tab" data-k="verification" aria-selected="false">Verification</button></div>
     <div class="bpane on" data-k="steps"><ol class="how"><li><div><b>Connect the query window to the target database and confirm it in the title bar.</b><span class="note">The script carries no USE statement, so it deploys into whatever the session is connected to. Make the check part of the ritual.</span></div></li><li><div><b>Deploy in dependency order.</b><span class="note">Calendar table and table types first, then the helper and date functions, then the procedures that consume them.</span></div></li><li><div><b>Seed the calendar table across the full booking horizon, with years of headroom.</b><span class="note">Availability joins to it. Short coverage returns an empty calendar and no error.</span></div></li><li><div><b>Grant EXECUTE on the new objects to the account the backend services run as.</b></div></li><li><div><b>Compare a real execution of the availability procedures against the source and add any index the target needs.</b><span class="note">The same procedure over a different data distribution can be an order of magnitude slower.</span></div></li><li><div><b>Record the deployed object list with modify dates in the release folder.</b></div></li></ol><div class="gatebox"><h5>Exit gate</h5><ul class="tasks"><li><input type="checkbox" id="g3_0"><label for="g3_0">Every object in the script exists in the target with a fresh modify date.</label></li><li><input type="checkbox" id="g3_1"><label for="g3_1">The dependency query returns no unresolved references.</label></li><li><input type="checkbox" id="g3_2"><label for="g3_2">The calendar table covers the agreed booking horizon.</label></li></ul></div></div><div class="bpane " data-k="cautions"><div class="cau stop"><h5><span class="badge">STOP</span>Without a USE statement, the connection decides the database</h5><p>An editor window left on the wrong connection deploys the whole script into the wrong organisation, silently and successfully.</p></div><div class="cau "><h5>An empty calendar is indistinguishable from no availability</h5><p>Every availability procedure returns an empty set rather than an error. Verify the coverage before anyone tests the feature and concludes it is broken.</p></div><div class="cau "><h5>These procedures read base tables directly</h5><p>They query the physical tables rather than filtered views, so they bypass CRM security and depend on column names. A metadata change in the target can break them with no warning at the application layer.</p></div></div><div class="bpane " data-k="verification"><div class="gatebox" style="margin:0 0 14px">
 <h5>Deployment script</h5>
-<p style="font-size:13px;color:var(--fg2);margin:0">The page carries the script itself. Export it to deploy, or import a newer one &mdash; the object count above and the object list in the query below follow whatever is loaded.</p>
+<p style="font-size:13px;color:var(--fg2);margin:0">The page carries <b>Migrate_Database_Objects.sql</b>. Export it to deploy, or import a newer one &mdash; the object count and the object list in the query below follow whatever is loaded. Served from a folder that holds the file, the page picks it up automatically on load.</p>
 <div class="filerow">
   <button class="ib solid" onclick="exportSql()"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M4 19h16"/></svg>Export .sql</button>
   <button class="ib" onclick="document.getElementById('fileSql').click()"><svg viewBox="0 0 24 24"><path d="M12 17V5M8 9l4-4 4 4M4 19h16"/></svg>Import .sql</button>
@@ -767,19 +767,34 @@ footer{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;paddin
   </footer>
 </div>
 
-<script type="text/plain" id="sqlsrc">GO
-CREATE TABLE [dbo].[DateTable](
-	[Date] [date] NOT NULL,
-	[DayOfWeekName] [nvarchar](10) NULL,
-	[DayOfWeek] [tinyint] NULL
-) ON [PRIMARY]
-GO
-ALTER TABLE [dbo].[DateTable] ADD PRIMARY KEY CLUSTERED 
-(
-	[Date] ASC
-)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, IGNORE_DUP_KEY = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+<script type="text/plain" id="sqlsrc">---------------------------------------------------types-----------------------------------------------------------------------
+---------------------------------------------------types-----------------------------------------------------------------------
+---------------------------------------------------types-----------------------------------------------------------------------
+---------------------------------------------------types-----------------------------------------------------------------------
+
+/*==============================================================
+  DateTable
+==============================================================*/
+IF OBJECT_ID(N'dbo.DateTable', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[DateTable]
+    (
+        [Date]           [date]          NOT NULL,
+        [DayOfWeekName]  [nvarchar](10)  NULL,
+        [DayOfWeek]      [tinyint]       NULL,
+        CONSTRAINT [PK_DateTable] PRIMARY KEY CLUSTERED ([Date] ASC)
+            WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF,
+                  ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON)
+            ON [PRIMARY]
+    ) ON [PRIMARY];
+END
 GO
 
+/*==============================================================
+  Populate / extend DateTable
+==============================================================*/
+DECLARE @StartDate date = '2020-01-01';
+DECLARE @EndDate   date = '2035-12-31';
 
 ;WITH DateRange AS
 (
@@ -802,31 +817,44 @@ WHERE NOT EXISTS
     SELECT 1
     FROM dbo.DateTable AS D
     WHERE D.[Date] = DateRange.[Date]
-);
-GO
-
-/****** Object:  UserDefinedTableType [dbo].[ChosenParameterType]    Script Date: 9/8/2026 1:38:11 PM ******/
-DROP TYPE [dbo].[ChosenParameterType]
-GO
-
-/****** Object:  UserDefinedTableType [dbo].[ChosenParameterType]    Script Date: 9/8/2026 1:38:11 PM ******/
-CREATE TYPE [dbo].[ChosenParameterType] AS TABLE(
-	[ParameterId] [uniqueidentifier] NULL,
-	[ResourceGroupId] [uniqueidentifier] NULL,
-	[Value] [nvarchar](200) NULL
 )
-
+OPTION (MAXRECURSION 0);
 GO
-/****** Object:  UserDefinedTableType [dbo].[ManualOrderReservationType]    Script Date: 9/8/2026 1:38:32 PM ******/
-CREATE TYPE [dbo].[ManualOrderReservationType] AS TABLE(
-	[ReservationId] [uniqueidentifier] NOT NULL,
-	[LocationType] [int] NOT NULL,
-	[NewOrder] [int] NOT NULL
-)
 
+/*==============================================================
+  dbo.ChosenParameterType
+==============================================================*/
+IF TYPE_ID(N'dbo.ChosenParameterType') IS NULL
+BEGIN
+    CREATE TYPE [dbo].[ChosenParameterType] AS TABLE
+    (
+        [ParameterId]      [uniqueidentifier] NULL,
+        [ResourceGroupId]  [uniqueidentifier] NULL,
+        [Value]            [nvarchar](200)    NULL
+    );
+END
+GO
+
+/*==============================================================
+  dbo.ManualOrderReservationType
+==============================================================*/
+IF TYPE_ID(N'dbo.ManualOrderReservationType') IS NULL
+BEGIN
+    CREATE TYPE [dbo].[ManualOrderReservationType] AS TABLE
+    (
+        [ReservationId]  [uniqueidentifier] NOT NULL,
+        [LocationType]   [int]              NOT NULL,
+        [NewOrder]       [int]              NOT NULL
+    );
+END
 GO
 ---------------------------------------------------functions-----------------------------------------------------------------------
-CREATE FUNCTION [dbo].[SplitToRows] (@column varchar(max), @separator varchar(15))
+---------------------------------------------------functions-----------------------------------------------------------------------
+---------------------------------------------------functions-----------------------------------------------------------------------
+---------------------------------------------------functions-----------------------------------------------------------------------
+---------------------------------------------------functions-----------------------------------------------------------------------
+
+CREATE OR ALTER FUNCTION [dbo].[SplitToRows] (@column varchar(max), @separator varchar(15))
 RETURNS @rtnTable TABLE
   (
   ID int identity(1,1),
@@ -858,7 +886,7 @@ END;
 GO
 
 /****** Object:  UserDefinedFunction [dbo].[DailyAvailableDatesWithOccurence]    Script Date: 9/8/2026 2:30:34 PM ******/
-CREATE FUNCTION [dbo].[DailyAvailableDatesWithOccurence] (
+CREATE OR ALTER FUNCTION [dbo].[DailyAvailableDatesWithOccurence] (
     @startDate DATETIME,
 	@endDate DATETIME,
     @servicedays NVARCHAR(100),
@@ -920,7 +948,7 @@ END;
 
 GO
 /****** Object:  UserDefinedFunction [dbo].[MonthlyAvailableDatesWithOccurence]    Script Date: 9/8/2026 2:31:23 PM ******/
-CREATE FUNCTION [dbo].[MonthlyAvailableDatesWithOccurence] (
+CREATE OR ALTER FUNCTION [dbo].[MonthlyAvailableDatesWithOccurence] (
    @startDate DATETIME,
    @endDate DATETIME,
    @serviceDays NVARCHAR(100),
@@ -1015,7 +1043,7 @@ END;
 GO
 
 /****** Object:  UserDefinedFunction [dbo].[ParseChosenParameters]    Script Date: 9/8/2026 2:31:56 PM ******/
-CREATE FUNCTION [dbo].[ParseChosenParameters](@ChosenParameters NVARCHAR(MAX))
+CREATE OR ALTER FUNCTION [dbo].[ParseChosenParameters](@ChosenParameters NVARCHAR(MAX))
 RETURNS @Result TABLE
 (
     ResourceGroupId UNIQUEIDENTIFIER,
@@ -1041,7 +1069,7 @@ END;
 GO
 
 /****** Object:  UserDefinedFunction [dbo].[WeeklyAvailableDatesWithOccurence]    Script Date: 9/8/2026 2:33:24 PM ******/
-CREATE   FUNCTION [dbo].[WeeklyAvailableDatesWithOccurence] (
+CREATE OR ALTER FUNCTION [dbo].[WeeklyAvailableDatesWithOccurence] (
    @startDate DATETIME,
    @endDate DATETIME,
    @selectedDays NVARCHAR(100), 
@@ -1094,7 +1122,7 @@ END;
 GO
 
 /****** Object:  UserDefinedFunction [dbo].[IsServiceTimeSlotAndRegionValid]    Script Date: 9/8/2026 2:36:28 PM ******/
-CREATE FUNCTION [dbo].[IsServiceTimeSlotAndRegionValid]
+CREATE OR ALTER FUNCTION [dbo].[IsServiceTimeSlotAndRegionValid]
 (
     @ServiceId UNIQUEIDENTIFIER,
     @TimeSlotId UNIQUEIDENTIFIER,
@@ -1158,7 +1186,14 @@ BEGIN
 END;
 
 GO
----------------------------------------------------stored-----------------------------------------------------------------------
+---------------------------------------------------stored procedures-----------------------------------------------------------------------
+---------------------------------------------------stored procedures-----------------------------------------------------------------------
+---------------------------------------------------stored procedures-----------------------------------------------------------------------
+---------------------------------------------------stored procedures-----------------------------------------------------------------------
+
+
+
+
 
 /****** Object:  StoredProcedure [dbo].[GetTimeSlotsByServiceId]    Script Date: 9/8/2026 1:42:46 PM ******/
 CREATE OR ALTER PROCEDURE [dbo].[GetTimeSlotsByServiceId]     
@@ -1712,9 +1747,9 @@ BEGIN
 
 END;
 
-GO;
+GO
 /****** Object:  StoredProcedure [dbo].[GetSelectedCountriesByService]    Script Date: 9/8/2026 1:48:21 PM ******/
-CREATE  PROCEDURE [dbo].[GetSelectedCountriesByService]  
+CREATE OR ALTER  PROCEDURE [dbo].[GetSelectedCountriesByService]  
     @ServiceId UNIQUEIDENTIFIER  
 AS  
 BEGIN  
@@ -5143,6 +5178,7 @@ document.getElementById("fileXlsx").addEventListener("change", e => {
 });
 
 /* ---------- deployment script ---------- */
+const SQLFILE = "Migrate_Database_Objects.sql";
 let SQLTEXT = (document.getElementById("sqlsrc") || {textContent:""}).textContent || "";
 
 function parseSql(text){
@@ -5159,7 +5195,7 @@ function parseSql(text){
 }
 function exportSql(){
   if(!SQLTEXT.trim()){ say("sqlState", "No script is loaded on this page yet. Import one first.", "warn"); return; }
-  download(new Blob([SQLTEXT], {type:"text/plain;charset=utf-8"}), "dateTypes_function_procedures.sql");
+  download(new Blob([SQLTEXT], {type:"text/plain;charset=utf-8"}), SQLFILE);
   say("sqlState", "Exported the script currently carried by this page.", "ok");
 }
 document.getElementById("fileSql").addEventListener("change", e => {
@@ -5186,7 +5222,22 @@ document.getElementById("fileSql").addEventListener("change", e => {
 /* ---------- boot the additions ---------- */
 applyOrgs();
 refreshAll();
-say("sqlState", DATA.sqlobjs.length + " objects loaded from the script carried by this page.");
+say("sqlState", DATA.sqlobjs.length + " objects loaded from the copy carried by this page.");
+
+/* If the page is served over http and Migrate_Database_Objects.sql sits beside it,
+   prefer that file so the page never drifts from the script on disk.
+   Opened straight from the file system, the fetch is blocked and the embedded copy stands. */
+if(location.protocol === "http:" || location.protocol === "https:"){
+  fetch(SQLFILE, {cache:"no-store"}).then(r => r.ok ? r.text() : null).then(text => {
+    if(!text) return;
+    const objs = parseSql(text);
+    if(!objs.length) return;
+    SQLTEXT = text;
+    DATA.sqlobjs = objs;
+    refreshAll();
+    say("sqlState", "Synced with <b>" + SQLFILE + "</b> from this folder &mdash; " + objs.length + " objects.", "ok");
+  }).catch(() => {});
+}
 say("xlsxState", "Inventory loaded from the criteria workbook.");
 
 </script>
